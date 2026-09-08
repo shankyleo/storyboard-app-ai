@@ -7,7 +7,7 @@ import {
   generatePanelsAction,
   getPanelProgressAction,
 } from "@/app/actions/project-actions";
-import { PanelImage } from "@/components/panel-image";
+import { PanelImageCarousel } from "@/components/panel-image-carousel";
 import { PageShell } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -226,9 +226,11 @@ export function PanelProgress({
               >
                 <div className="storyboard-frame relative aspect-video p-3">
                   {panel.imageUrl ? (
-                    <PanelImage
-                      src={panel.imageUrl}
-                      alt={beat?.title ?? `Panel ${index + 1}`}
+                    <PanelImageCarousel
+                      key={`${panel.id}-${panel.imageHistory.length}-${panel.imageUrl}`}
+                      imageUrl={panel.imageUrl}
+                      imageHistory={panel.imageHistory}
+                      title={beat?.title ?? `Panel ${index + 1}`}
                     />
                   ) : panel.status === "failed" ? (
                     <div className="flex h-full flex-col items-center justify-center gap-2 rounded-md bg-red-950/20 px-4 text-center text-red-300">
@@ -268,28 +270,7 @@ export function PanelProgress({
                       )}
                     </div>
                   </div>
-                  {panel.imageHistory.length > 0 && (
-                    <details className="mt-3 text-xs text-zinc-500">
-                      <summary className="cursor-pointer hover:text-zinc-300">
-                        {panel.imageHistory.length} earlier version
-                        {panel.imageHistory.length === 1 ? "" : "s"} saved
-                      </summary>
-                      <div className="mt-2 grid grid-cols-2 gap-2">
-                        {panel.imageHistory.map((imageUrl, historyIndex) => (
-                          <div
-                            key={`${imageUrl}-${historyIndex}`}
-                            className="relative aspect-video overflow-hidden rounded-sm"
-                          >
-                            <PanelImage
-                              src={imageUrl}
-                              alt={`${beat?.title ?? `Panel ${index + 1}`} earlier version ${historyIndex + 1}`}
-                              className="object-cover"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  )}
+
                 </div>
               </article>
             );
