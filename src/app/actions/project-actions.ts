@@ -83,6 +83,7 @@ export async function startPanelGenerationAction(projectId: string) {
 export async function generatePanelsAction(
   projectId: string,
   imageProviderInput?: string,
+  generationMode: "failed" | "all" = "failed",
 ) {
   const sessionId = await ensureSessionId();
   const project = await assertProjectAccess(projectId, sessionId);
@@ -109,32 +110,54 @@ export async function generatePanelsAction(
   const sortedBeats = [...current.beats].sort(
     (a, b) => a.orderIndex - b.orderIndex,
   );
+  const generationJobs = sortedPanels
+    .map((panel, index) => ({ panel, beat: sortedBeats[index] }))
+    .filter(
+      (
+        job,
+      ): job is { panel: (typeof sortedPanels)[number]; beat: (typeof sortedBeats)[number] } =>
+        Boolean(job.beat) &&
+        (generationMode === "all" || job.panel.status !== "done"),
+    );
+
+  // Use the full board even on failed-only retries, so the visual context stays fixed.
+  const continuity = [
+    `Story: ${current.title}`,
+    ...Object.entries(current.interviewAnswers ?? {}).map(([key, value]) => `${key}: ${value}`),
+    "Story sequence (context only; render just the requested scene):",
+    ...sortedBeats.map((beat, index) => `${index + 1}. ${beat.description} Visual details: ${beat.visualPrompt}`),
+    "Maintain recurring characters' face, age, hair, clothing and identifying props throughout. Preserve location design and the same drawing medium. Scene instructions describe action, not a change of art style.",
+  ].join("\n");
 
   await runPanelGenerationBatch(
-    sortedBeats.map((beat) => ({
-      visualPrompt: beat.visualPrompt,
+    generationJobs.map(({ beat }) => ({
+      visualPrompt: `${continuity}\n\nRENDER ONLY THIS SCENE: ${beat.title}. ${beat.description}\n${beat.visualPrompt}`,
       beatTitle: beat.title,
     })),
     async (index, result) => {
-      const panel = sortedPanels[index];
+      const panel = generationJobs[index]?.panel;
       if (!panel) return;
       if (result.ok) {
+        const imageHistory = panel.imageUrl
+          ? [...(panel.imageHistory ?? []), panel.imageUrl]
+          : panel.imageHistory ?? [];
         await updatePanel(projectId, panel.id, {
           status: "done",
           imageUrl: result.imageUrl,
+          imageHistory,
           errorMessage: null,
         });
       } else {
         await updatePanel(projectId, panel.id, {
-          status: "failed",
-          imageUrl: null,
+          status: panel.imageUrl ? "done" : "failed",
+          imageUrl: panel.imageUrl,
           errorMessage: result.error,
         });
       }
       revalidatePath(`/project/${projectId}/panels`);
     },
     async (index) => {
-      const panel = sortedPanels[index];
+      const panel = generationJobs[index]?.panel;
       if (!panel) return;
       await updatePanel(projectId, panel.id, { status: "generating" });
       revalidatePath(`/project/${projectId}/panels`);

@@ -22,6 +22,7 @@ type PanelRow = {
   orderIndex: number;
   status: string;
   imageUrl: string | null;
+  imageHistory: string[];
   errorMessage: string | null;
 };
 
@@ -61,6 +62,8 @@ export function PanelProgress({
   const finished = done + failed;
   const percent = total === 0 ? 0 : Math.round((finished / total) * 100);
   const isComplete = status === "ready" && finished === total && total > 0;
+  const canRetryFailedPanels = failed > 0 && status === "ready";
+  const canRegenerateAllPanels = done > 0 && status === "ready";
   const needsGeneration = panels.some((p) => p.status === "pending");
   const isInProgress = panels.some(
     (p) => p.status === "generating" || p.status === "done" || p.status === "failed",
@@ -85,9 +88,13 @@ export function PanelProgress({
     return () => clearInterval(interval);
   }, [projectId, isGenerating, isComplete]);
 
-  function handleGenerate() {
+  function handleGenerate(generationMode: "failed" | "all" = "failed") {
     startGenerate(() =>
-      generatePanelsAction(projectId, selectedProvider ?? undefined),
+      generatePanelsAction(
+        projectId,
+        selectedProvider ?? undefined,
+        generationMode,
+      ),
     );
   }
 
@@ -109,7 +116,8 @@ export function PanelProgress({
       </div>
 
       <div className="surface-card mb-8 p-6">
-        {needsGeneration && !isInProgress && (
+        {((needsGeneration && !isInProgress) || canRetryFailedPanels ||
+          canRegenerateAllPanels) && (
           <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end">
             {availableProviders.length > 0 ? (
               <div className="flex-1">
@@ -134,21 +142,33 @@ export function PanelProgress({
                 No image API keys configured — placeholder sketches will be used.
               </p>
             )}
-            <Button
-              type="button"
-              onClick={handleGenerate}
-              disabled={isGenerating}
-              className="w-full sm:w-auto"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Starting…
-                </>
-              ) : (
-                "Generate panels"
-              )}
-            </Button>
+            {(needsGeneration || canRetryFailedPanels) && (
+              <Button
+                type="button"
+                onClick={() => handleGenerate()}
+                disabled={isGenerating}
+                className="w-full sm:w-auto"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Starting…
+                  </>
+                ) : (
+                  canRetryFailedPanels ? "Retry failed panels" : "Generate panels"
+                )}
+              </Button>
+            )}
+            {canRegenerateAllPanels && (
+              <Button
+                type="button"
+                onClick={() => handleGenerate("all")}
+                disabled={isGenerating}
+                className="w-full sm:w-auto"
+              >
+                Regenerate all panels
+              </Button>
+            )}
           </div>
         )}
 
@@ -176,7 +196,7 @@ export function PanelProgress({
         {(isGenerating || (needsGeneration && isInProgress)) && !isComplete && (
           <p className="mt-4 flex items-center gap-2 text-sm text-zinc-400">
             <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
-            Drawing panels…
+            Drawing panels… Rate limits are retried automatically; a panel can take up to 10 minutes.
           </p>
         )}
         {isComplete && done > 0 && (
@@ -248,6 +268,28 @@ export function PanelProgress({
                       )}
                     </div>
                   </div>
+                  {panel.imageHistory.length > 0 && (
+                    <details className="mt-3 text-xs text-zinc-500">
+                      <summary className="cursor-pointer hover:text-zinc-300">
+                        {panel.imageHistory.length} earlier version
+                        {panel.imageHistory.length === 1 ? "" : "s"} saved
+                      </summary>
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        {panel.imageHistory.map((imageUrl, historyIndex) => (
+                          <div
+                            key={`${imageUrl}-${historyIndex}`}
+                            className="relative aspect-video overflow-hidden rounded-sm"
+                          >
+                            <PanelImage
+                              src={imageUrl}
+                              alt={`${beat?.title ?? `Panel ${index + 1}`} earlier version ${historyIndex + 1}`}
+                              className="object-cover"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               </article>
             );

@@ -113,7 +113,8 @@ Rules:
 - Infer genre, setting, and tone from the story description
 - Each description must be 1-2 complete sentences describing what happens in that beat, grounded in the user's story and hero answers
 - Descriptions must read as finished prose — never truncate mid-sentence, never end with "…", and never use vague placeholders like "things get worse"
-- Each visualPrompt should describe a single storyboard panel image in cinematic sketch style
+- Establish one concrete visual design for every recurring character (age, face, hair, clothing, signature props) and location, then repeat those exact details in every visualPrompt where they appear.
+- Each visualPrompt should describe a single landscape storyboard frame in monochrome graphite and charcoal on ivory paper. Keep this same medium and palette across all beats; vary only camera framing and action.
 - Return ONLY valid JSON, no markdown`;
 
   const userPrompt = Object.entries(answers)

@@ -31,6 +31,7 @@ export type ProjectWithRelations = {
     orderIndex: number;
     status: "pending" | "generating" | "done" | "failed";
     imageUrl: string | null;
+    imageHistory: string[];
     errorMessage: string | null;
     createdAt: Date;
     updatedAt: Date;
@@ -50,7 +51,10 @@ function mapMemoryProject(project: ReturnType<typeof memoryStore.getProject>) {
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
     beats: project.beats,
-    panels: project.panels,
+    panels: project.panels.map((panel) => ({
+      ...panel,
+      imageHistory: panel.imageHistory ?? [],
+    })),
   } satisfies ProjectWithRelations;
 }
 
@@ -245,6 +249,7 @@ export async function updatePanel(
   patch: {
     status?: "pending" | "generating" | "done" | "failed";
     imageUrl?: string | null;
+    imageHistory?: string[];
     errorMessage?: string | null;
   },
 ) {

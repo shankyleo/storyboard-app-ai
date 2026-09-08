@@ -49,7 +49,12 @@ import { resolveImageProvider } from "@/lib/image-providers";
 const FLUX_SCHNELL_MODEL = "black-forest-labs/flux-schnell";
 const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
 const PANEL_IMAGE_PROMPT_PREFIX =
-  "Storyboard panel, comic storyboard style, cinematic sketch:";
+  "Single cinematic storyboard frame. Consistent graphite pencil and charcoal linework on warm ivory paper, monochrome grayscale, restrained shading, realistic proportions, no color, no photorealism, no 3D rendering, no lettering, no captions, no borders, no collage. Landscape composition; keep all important action in the central 16:9 safe area. Follow the same art direction in every scene:";
+const REPLICATE_REQUEST_TIMEOUT_MS = 15_000;
+const REPLICATE_POLL_TIMEOUT_MS = 660_000;
+const REPLICATE_POLL_INTERVAL_MS = 1_000;
+const REPLICATE_MIN_START_INTERVAL_MS = 11_000;
+let nextReplicateStartAt = 0;
 
 export type PanelImageResult =
   | { ok: true; imageUrl: string }
@@ -127,31 +132,47 @@ async function generateWithOpenAI(
 async function generateWithReplicate(
   visualPrompt: string,
 ): Promise<PanelImageResult> {
-  const response = await fetch(
-    `https://api.replicate.com/v1/models/${FLUX_SCHNELL_MODEL}/predictions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`,
-        "Content-Type": "application/json",
-        Prefer: "wait=60",
-      },
-      body: JSON.stringify({
-        input: {
-          prompt: `${PANEL_IMAGE_PROMPT_PREFIX} ${visualPrompt}`,
-          num_outputs: 1,
-          aspect_ratio: "16:9",
-          output_format: "webp",
-        },
-      }),
-    },
-  );
-
+  let response!: Response;
   let body: unknown = null;
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await waitForReplicateStartSlot();
+    try {
+      response = await fetch(
+        `https://api.replicate.com/v1/models/${FLUX_SCHNELL_MODEL}/predictions`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}`,
+            "Content-Type": "application/json",
+            "Cancel-After": "10m",
+          },
+          body: JSON.stringify({
+            input: {
+              prompt: `${PANEL_IMAGE_PROMPT_PREFIX} ${visualPrompt}`,
+              num_outputs: 1,
+              aspect_ratio: "16:9",
+              output_format: "webp",
+              output_quality: 80,
+              go_fast: true,
+              megapixels: "1",
+              num_inference_steps: 4,
+            },
+          }),
+          signal: AbortSignal.timeout(REPLICATE_REQUEST_TIMEOUT_MS),
+        },
+      );
+    } catch {
+      return {
+        ok: false,
+        error:
+          "Replicate could not start generation within 15 seconds. Check your connection and try again.",
+      };
+    }
+
+    body = await readJson(response);
+    if (response.status !== 429 || attempt === 5) break;
+    // A rejected start has no prediction to duplicate; only retry explicit throttles.
+    await delay(replicateRetryDelay(response, body));
   }
 
   if (!response.ok) {
@@ -165,14 +186,57 @@ async function generateWithReplicate(
     };
   }
 
-  const data = body as {
+  const data = (body ?? {}) as {
     output?: string | string[];
     status?: string;
     error?: string;
+    urls?: { get?: string };
   };
 
-  if (data.status === "failed" && data.error) {
-    return { ok: false, error: data.error };
+  const deadline = Date.now() + REPLICATE_POLL_TIMEOUT_MS;
+  while (data.status === "starting" || data.status === "processing") {
+    if (!data.urls?.get) {
+      return { ok: false, error: "Replicate returned no prediction status URL." };
+    }
+    if (Date.now() >= deadline) {
+      return {
+        ok: false,
+        error:
+          "Replicate exceeded its 10-minute generation deadline. Check the prediction in your dashboard before retrying.",
+      };
+    }
+
+    await delay(REPLICATE_POLL_INTERVAL_MS);
+    try {
+      response = await fetch(data.urls.get, {
+        headers: { Authorization: `Bearer ${process.env.REPLICATE_API_TOKEN}` },
+        signal: AbortSignal.timeout(REPLICATE_REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      // Keep checking the existing prediction; never create a replacement here.
+      await delay(3_000);
+      continue;
+    }
+
+    body = await readJson(response);
+    if (response.status === 429 || response.status >= 500) {
+      await delay(Math.min(replicateRetryDelay(response, body), Math.max(0, deadline - Date.now())));
+      continue;
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: apiErrorMessage("Replicate", response.status, body, {
+          auth: "Invalid Replicate API token. Check REPLICATE_API_TOKEN in .env.local.",
+        }),
+      };
+    }
+
+    Object.assign(data, body as typeof data);
+  }
+
+  if (data.status === "failed" || data.status === "canceled") {
+    return { ok: false, error: data.error || `Replicate generation ${data.status}. Please try again.` };
   }
 
   const output = Array.isArray(data.output) ? data.output[0] : data.output;
@@ -181,6 +245,34 @@ async function generateWithReplicate(
   }
 
   return { ok: false, error: "Replicate returned no image output." };
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function replicateRetryDelay(response: Response, body: unknown): number {
+  const header = response.headers.get("retry-after");
+  const seconds = header ? Number(header) : NaN;
+  const headerMs = Number.isFinite(seconds) ? seconds * 1000
+    : header ? Date.parse(header) - Date.now() : 0;
+  const detail = body && typeof body === "object"
+    ? String((body as { detail?: unknown }).detail ?? "") : "";
+  const match = detail.match(/(?:resets in|available in)\s*~?\s*(\d+(?:\.\d+)?)\s*s/i);
+  const bodyMs = match ? Number(match[1]) * 1000 : 0;
+  return Math.max(REPLICATE_MIN_START_INTERVAL_MS, headerMs || 0, bodyMs) + 1000;
+}
+
+async function waitForReplicateStartSlot(): Promise<void> {
+  // Reserve synchronously before yielding, so concurrent callers get distinct slots.
+  const startAt = Math.max(Date.now(), nextReplicateStartAt);
+  nextReplicateStartAt = startAt + REPLICATE_MIN_START_INTERVAL_MS;
+  const waitMs = startAt - Date.now();
+  if (waitMs > 0) await delay(waitMs);
 }
 
 async function generateWithGemini(
@@ -280,16 +372,20 @@ export async function generatePanelImage(
     return generateWithGemini(visualPrompt);
   }
 
+  if (resolved === "replicate") {
+    return generateWithReplicate(visualPrompt);
+  }
+
+  if (process.env.REPLICATE_API_TOKEN) {
+    return generateWithReplicate(visualPrompt);
+  }
+
   if (process.env.OPENAI_API_KEY) {
     return generateWithOpenAI(visualPrompt);
   }
 
   if (process.env.GEMINI_API_KEY) {
     return generateWithGemini(visualPrompt);
-  }
-
-  if (process.env.REPLICATE_API_TOKEN) {
-    return generateWithReplicate(visualPrompt);
   }
 
   await delay(400 + Math.random() * 400);
@@ -314,12 +410,12 @@ export async function runPanelGenerationBatch(
       await onBeforeGenerate(i);
     }
     const item = items[i];
-    const result = await generatePanelImage(
-      item.visualPrompt,
-      i,
-      item.beatTitle,
-      provider,
-    );
+    let result: PanelImageResult;
+    try {
+      result = await generatePanelImage(item.visualPrompt, i, item.beatTitle, provider);
+    } catch {
+      result = { ok: false, error: "Image provider connection failed. Please try again." };
+    }
     await onProgress(i, result);
   }
 }

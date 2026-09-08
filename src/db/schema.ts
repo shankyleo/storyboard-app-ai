@@ -23,7 +23,11 @@ export const panelStatusEnum = pgEnum("panel_status", [
   "failed",
 ]);
 
-export const imageProviderEnum = pgEnum("image_provider", ["openai", "gemini"]);
+export const imageProviderEnum = pgEnum("image_provider", [
+  "openai",
+  "gemini",
+  "replicate",
+]);
 
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -66,6 +70,7 @@ export const panels = pgTable("panels", {
   orderIndex: integer("order_index").notNull(),
   status: panelStatusEnum("status").notNull().default("pending"),
   imageUrl: text("image_url"),
+  imageHistory: jsonb("image_history").$type<string[]>().notNull().default([]),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

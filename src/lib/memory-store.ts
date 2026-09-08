@@ -173,6 +173,7 @@ export const memoryStore = {
       orderIndex: index,
       status: "pending" as const,
       imageUrl: null,
+      imageHistory: [],
       errorMessage: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -186,7 +187,9 @@ export const memoryStore = {
   updatePanel(
     projectId: string,
     panelId: string,
-    patch: Partial<Pick<Panel, "status" | "imageUrl" | "errorMessage">>,
+    patch: Partial<
+      Pick<Panel, "status" | "imageUrl" | "imageHistory" | "errorMessage">
+    >,
   ) {
     hydrate(projectId);
     const project = store.get(projectId);
