@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --color-surface: rgba(255, 255, 255, 0.04);
+  --color-surface-hover: rgba(255, 255, 255, 0.06);
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.14);
+  --color-accent: #f59e0b;
+  --color-accent-muted: rgba(245, 158, 11, 0.15);
+}
+
+body {
+  font-family: var(--font-sans);
+  background: #070709;
+  color: #f4f4f5;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.surface-card {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: 0.875rem;
+}
+
+.surface-card:hover {
+  border-color: var(--color-border-strong);
+}
+
+.storyboard-frame {
+  background: linear-gradient(145deg, #faf7f2 0%, #f0ebe3 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.hero-glow {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(245, 158, 11, 0.12), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 60%, rgba(99, 102, 241, 0.08), transparent);
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
