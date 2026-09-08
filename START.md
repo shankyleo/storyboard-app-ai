@@ -3,7 +3,7 @@
 Open this folder in a **new Cursor window**.
 
 - **App:** Which will allow users to generate a story board
-- **GitHub:** Add later from Apps in Idea Forge
+- **GitHub:** https://github.com/shankyleo/storyboard-app-ai
 
 1. Read `SPEC.md` — what to build
 2. Read `ARCHITECTURE.md` — stack, platform, hosting

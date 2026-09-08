@@ -21,7 +21,7 @@ What I don’t have yet are **repo/folder choices** and a couple of **ops defaul
 - **Backend:** Next.js Route Handlers + Server Actions (monolith, no separate API service)
 - **Database:** PostgreSQL (Neon) + Drizzle — `Project → Beats → Panels → Export`
 - **LLM:** GPT-4o or Claude with **structured JSON** (Zod-validated beat sheet from interview)
-- **Images:** Replicate (Flux Schnell) or DALL·E 3 — **queued batch** panel generation, not inline
+- **Images:** OpenAI (gpt-image-1) or Replicate (Flux Schnell) — **queued batch** panel generation, not inline
 - **Jobs:** Inngest or Trigger.dev — poll progress while panels render
 - **Storage:** Cloudflare R2 or Supabase Storage — panel assets + PDF
 - **PDF:** `@react-pdf/renderer` or Puppeteer HTML→PDF from the same pitch page template
