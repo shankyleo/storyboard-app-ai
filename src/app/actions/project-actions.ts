@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { generateBeatSheet } from "@/lib/llm";
+import { generateBeatSheet, improveVisualPrompts } from "@/lib/llm";
 import { runPanelGenerationBatch } from "@/lib/panels";
 import { isImageProvider } from "@/lib/image-providers";
 import {
@@ -43,7 +43,12 @@ export async function generateBeatsAction(projectId: string) {
   if (!project) throw new Error("Unauthorized");
 
   const answers = project.interviewAnswers ?? {};
-  const beatSheet = await generateBeatSheet(answers);
+  let beatSheet;
+  try {
+    beatSheet = await generateBeatSheet(answers);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not write the beat sheet. Please try again." };
+  }
   await saveBeatSheet(projectId, beatSheet);
   const saved = await getProjectById(projectId);
   if (!saved || saved.beats.length === 0) {
@@ -120,18 +125,9 @@ export async function generatePanelsAction(
         (generationMode === "all" || job.panel.status !== "done"),
     );
 
-  // Use the full board even on failed-only retries, so the visual context stays fixed.
-  const continuity = [
-    `Story: ${current.title}`,
-    ...Object.entries(current.interviewAnswers ?? {}).map(([key, value]) => `${key}: ${value}`),
-    "Story sequence (context only; render just the requested scene):",
-    ...sortedBeats.map((beat, index) => `${index + 1}. ${beat.description} Visual details: ${beat.visualPrompt}`),
-    "Maintain recurring characters' face, age, hair, clothing and identifying props throughout. Preserve location design and the same drawing medium. Scene instructions describe action, not a change of art style.",
-  ].join("\n");
-
   await runPanelGenerationBatch(
     generationJobs.map(({ beat }) => ({
-      visualPrompt: `${continuity}\n\nRENDER ONLY THIS SCENE: ${beat.title}. ${beat.description}\n${beat.visualPrompt}`,
+      visualPrompt: `SHOT: ${beat.visualPrompt}\n\nScene event: ${beat.description}\nRender only this single moment; prioritize the shot action and framing above.`,
       beatTitle: beat.title,
     })),
     async (index, result) => {
@@ -186,4 +182,26 @@ export async function getPanelProgressAction(projectId: string) {
     generating,
     panels: project.panels.sort((a, b) => a.orderIndex - b.orderIndex),
   };
+}
+
+export async function improveVisualPromptsAction(projectId: string) {
+  const sessionId = await ensureSessionId();
+  const project = await assertProjectAccess(projectId, sessionId);
+  if (!project) throw new Error("Unauthorized");
+  if (project.panels.some((panel) => panel.status === "generating")) {
+    return { ok: false, message: "Wait for the current images to finish before updating prompts." };
+  }
+  try {
+    const beats = [...project.beats].sort((a, b) => a.orderIndex - b.orderIndex);
+    if (!beats.length) return { ok: false, message: "Create your beats first." };
+    const prompts = await improveVisualPrompts(project.interviewAnswers ?? {}, beats);
+    for (const prompt of prompts) {
+      await updateBeat(projectId, prompt.id, { visualPrompt: prompt.visualPrompt });
+    }
+    revalidatePath(`/project/${projectId}/beats`);
+    revalidatePath(`/project/${projectId}/panels`);
+    return { ok: true, message: "Visual prompts updated. Regenerate all panels to draw the new shots; existing images stay in the carousel." };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not update visual prompts. Please try again." };
+  }
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ExternalLink, Loader2 } from "lucide-react";
 import {
   generatePanelsAction,
+  improveVisualPromptsAction,
   getPanelProgressAction,
 } from "@/app/actions/project-actions";
 import { PanelImageCarousel } from "@/components/panel-image-carousel";
@@ -56,6 +57,8 @@ export function PanelProgress({
     savedImageProvider ?? defaultProvider,
   );
   const [isGenerating, startGenerate] = useTransition();
+  const [isImproving, startImprove] = useTransition();
+  const [promptMessage, setPromptMessage] = useState<string | null>(null);
   const done = panels.filter((p) => p.status === "done").length;
   const failed = panels.filter((p) => p.status === "failed").length;
   const total = panels.length;
@@ -146,7 +149,7 @@ export function PanelProgress({
               <Button
                 type="button"
                 onClick={() => handleGenerate()}
-                disabled={isGenerating}
+                disabled={isGenerating || isImproving}
                 className="w-full sm:w-auto"
               >
                 {isGenerating ? (
@@ -163,12 +166,37 @@ export function PanelProgress({
               <Button
                 type="button"
                 onClick={() => handleGenerate("all")}
-                disabled={isGenerating}
+                disabled={isGenerating || isImproving}
                 className="w-full sm:w-auto"
               >
                 Regenerate all panels
               </Button>
             )}
+          </div>
+        )}
+
+        {isComplete && (
+          <div className="mb-5 rounded-lg border border-white/10 p-4">
+            <p className="mb-3 text-sm text-zinc-400">
+              Similar-looking panels? Rewrite the visual prompts with distinct actions, camera angles and scene details.
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isGenerating || isImproving}
+              onClick={() => startImprove(async () => {
+                setPromptMessage(null);
+                try {
+                  const result = await improveVisualPromptsAction(projectId);
+                  setPromptMessage(result.message);
+                } catch {
+                  setPromptMessage("Could not update prompts. Please try again.");
+                }
+              })}
+            >
+              {isImproving ? "Writing detailed shots…" : "Improve visual prompts"}
+            </Button>
+            {promptMessage && <p role="status" className="mt-3 text-sm text-amber-200">{promptMessage}</p>}
           </div>
         )}
 

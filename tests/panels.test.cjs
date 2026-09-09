@@ -9,7 +9,7 @@ function harness(respond) {
   const calls = [];
   const context = {
     exports: {},
-    require: () => ({ resolveImageProvider: () => 'replicate' }),
+    require: (name) => name === "@/lib/replicate" ? replicate : ({ resolveImageProvider: () => 'replicate' }),
     process: { env: { REPLICATE_API_TOKEN: 'test' } },
     Date: { now: () => now, parse: Date.parse },
     AbortSignal,
@@ -19,6 +19,11 @@ function harness(respond) {
       return respond(calls.length, options);
     },
   };
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/replicate.ts', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText, context);
+  const replicate = context.exports;
+  context.exports = {};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/panels.ts', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText, context);

@@ -52,3 +52,9 @@ Without `DATABASE_URL`, the app runs in **memory mode** for local dev.
 ## Docs
 
 See `SPEC.md`, `ARCHITECTURE.md`, and `BUILD.md` for product charter.
+
+### Story-specific visual prompts
+
+Beat writing uses OpenAI when configured, or `meta/meta-llama-3-70b-instruct` through Replicate otherwise. Replicate text generation uses the same account credit and start-rate queue as images. Writer failures are surfaced instead of replacing the story with generic templates.
+
+On a completed board, use **Improve visual prompts** to rewrite the shot descriptions while retaining beats and image history, then **Regenerate all panels**. Each image request includes only its own shot and beat, followed by the shared art direction. Generated prompts repeat character design details but vary action, framing and staging. Text prompts improve continuity but do not guarantee identical character appearance.

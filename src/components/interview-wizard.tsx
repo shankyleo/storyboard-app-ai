@@ -22,6 +22,7 @@ export function InterviewWizard({
   projectId: string;
   initialAnswers: Record<string, string>;
 }) {
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState(initialAnswers);
   const [isPending, startTransition] = useTransition();
@@ -47,7 +48,9 @@ export function InterviewWizard({
     if (isLast) {
       startGenerate(async () => {
         await saveInterviewStepAction(projectId, answers);
-        await generateBeatsAction(projectId);
+        setGenerationError(null);
+        const result = await generateBeatsAction(projectId);
+        if (result?.error) setGenerationError(result.error);
       });
       return;
     }
@@ -61,15 +64,6 @@ export function InterviewWizard({
 
   return (
     <PageShell activePhase={0}>
-      <form
-        action={generateBeatsAction.bind(null, projectId)}
-        className="hidden"
-        aria-hidden="true"
-      >
-        <button type="submit" tabIndex={-1}>
-          Generate beat sheet
-        </button>
-      </form>
       <div className="mb-8 flex items-center justify-between text-sm">
         <Link href="/" className="text-zinc-500 transition hover:text-zinc-300">
           ← Home
@@ -87,6 +81,8 @@ export function InterviewWizard({
           Three quick questions — then we&apos;ll build your beat sheet and
           storyboard.
         </p>
+
+        {generationError && <p role="alert" className="mt-4 text-sm text-red-300">{generationError}</p>}
 
         <div className="mt-8 flex gap-2">
           {interviewQuestions.map((_, i) => (
